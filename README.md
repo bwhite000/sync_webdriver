@@ -1,10 +1,5 @@
 Dart Sync WebDriver
-================
-
-[![Build Status](https://travis-ci.org/google/dart-sync-webdriver.svg?branch=master)](https://travis-ci.org/google/dart-sync-webdriver)
-[![pub package](https://img.shields.io/pub/v/sync_webdriver.svg)](https://pub.dartlang.org/packages/sync_webdriver)
-
-**NOTE:** Dart Sync WebDriver is **deprecated**. Consider switching to the async [webdriver.dart](https://github.com/google/webdriver.dart).
+===================
 
 Installing
 ----------
