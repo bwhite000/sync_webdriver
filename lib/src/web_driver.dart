@@ -20,6 +20,8 @@ part of sync.webdriver;
 /// Use [CommandEvent] instead.
 typedef void CommandListener(String method, String endpoint, params);
 
+final _NUL_REGEXP = new RegExp('\u{0}');
+
 class WebDriver extends SearchContext {
   static final Uri DEFAULT_URI = new Uri.http('127.0.0.1:4444', '/wd/hub');
   static final HttpClientSync _client = new HttpClientSync();
@@ -30,18 +32,23 @@ class WebDriver extends SearchContext {
   JsonCodec _jsonDecoder;
   Timeouts _timeouts;
 
-  final StreamController<CommandEvent> _onCommand =
-      new StreamController.broadcast(sync: true);
+  final StreamController<CommandEvent> _onCommand = new StreamController.broadcast(sync: true);
   Stream<CommandEvent> get onCommand => _onCommand.stream;
 
-  factory WebDriver({Uri uri: null, Map<String, String> required: null,
-      Map<String, String> desired: const <String, String>{}}) {
+  factory WebDriver({
+      Uri uri,
+      final Map<String, String> required: null,
+      final Map<String, String> desired: const <String, String>{}
+  }) {
+    // Use the default URI if one is not specified.
     if (uri == null) {
       uri = DEFAULT_URI;
     }
-    var request =
-        _client.postUrl(new Uri.http(uri.authority, '${uri.path}/session'));
-    var jsonParams = {"desiredCapabilities": desired};
+
+    final HttpClientRequestSync request = _client.postUrl(new Uri.http(uri.authority, '${uri.path}/session'));
+    final Map<String, Map<String, String>> jsonParams = <String, Map<String, String>>{
+      "desiredCapabilities": desired
+    };
 
     if (required != null) {
       jsonParams["requiredCapabilities"] = required;
@@ -50,36 +57,47 @@ class WebDriver extends SearchContext {
     request.headers.contentType = _CONTENT_TYPE_JSON;
     request.write(JSON.encode(jsonParams));
 
-    var resp = request.close();
+    final HttpClientResponseSync resp = request.close();
 
-    var sessionUri;
-    var capabilities = const {};
+    Uri sessionUri;
+    Map capabilities = const {};
+
     switch (resp.statusCode) {
       case HttpStatus.SEE_OTHER:
       case HttpStatus.MOVED_TEMPORARILY:
         sessionUri = Uri.parse(resp.headers.value(HttpHeaders.LOCATION));
-        if (sessionUri.authority == null || sessionUri.authority.isEmpty) {
+
+        if (sessionUri.authority == null ||
+            sessionUri.authority.isEmpty)
+        {
           sessionUri = new Uri.http(uri.authority, sessionUri.path);
         }
-        break;
-      case HttpStatus.OK:
-        var jsonResp = _parseBody(resp);
 
-        if (jsonResp is! Map || jsonResp['status'] != 0) {
+        break;
+
+      case HttpStatus.OK:
+        final Map<String, dynamic> _jsonResp = _parseBody(resp);
+
+        if (_jsonResp is! Map ||
+            _jsonResp['status'] != 0)
+        {
           throw new WebDriverException(
               httpStatusCode: resp.statusCode,
               httpReasonPhrase: resp.reasonPhrase,
-              jsonResp: jsonResp);
+              jsonResp: _jsonResp
+          );
         }
 
-        sessionUri = _sessionUri(uri, jsonResp['sessionId']);
-        capabilities = new UnmodifiableMapView(jsonResp['value']);
+        sessionUri = _sessionUri(uri, _jsonResp['sessionId']);
+        capabilities = new UnmodifiableMapView(_jsonResp['value']);
         break;
+
       default:
         throw new WebDriverException(
             httpStatusCode: resp.statusCode,
             httpReasonPhrase: resp.reasonPhrase,
-            jsonResp: _parseBody(resp));
+            jsonResp: _parseBody(resp)
+        );
     }
 
     return new WebDriver._(sessionUri, capabilities);
@@ -90,9 +108,9 @@ class WebDriver extends SearchContext {
       uri = DEFAULT_URI;
     }
 
-    var request = _client.getUrl(_sessionUri(uri, sessionId));
-    var resp = request.close();
-    var jsonResp = _parseBody(resp);
+    final HttpClientRequestSync request = _client.getUrl(_sessionUri(uri, sessionId));
+    final HttpClientResponseSync resp = request.close();
+    final Map<String, dynamic> jsonResp = _parseBody(resp);
 
     if (jsonResp is! Map || jsonResp['status'] != 0) {
       throw new WebDriverException(
@@ -101,12 +119,12 @@ class WebDriver extends SearchContext {
           jsonResp: jsonResp);
     }
 
-    var capabilities = new UnmodifiableMapView(jsonResp['value']);
+    final UnmodifiableMapView capabilities = new UnmodifiableMapView(jsonResp['value']);
+
     return new WebDriver._(_sessionUri(uri, sessionId), capabilities);
   }
 
-  static Uri _sessionUri(Uri uri, String sessionId) =>
-      new Uri.http(uri.authority, '${uri.path}/session/$sessionId');
+  static Uri _sessionUri(Uri uri, String sessionId) =>  new Uri.http(uri.authority, '${uri.path}/session/$sessionId');
 
   WebDriver._(this.uri, this.capabilities) {
     _jsonDecoder = new JsonCodec.withReviver(_reviver);
@@ -116,7 +134,9 @@ class WebDriver extends SearchContext {
   @override
   WebDriver get driver => this;
 
-  set url(String url) => post('url', {'url': url});
+  void set url(String url) => post('url', {
+    'url': url
+  });
 
   String get url => get('url');
 
@@ -132,8 +152,7 @@ class WebDriver extends SearchContext {
     delete('');
   }
 
-  Iterable<Window> get windows =>
-      get('window_handles').map((handle) => new Window._(this, handle));
+  Iterable<Window> get windows => get('window_handles').map((handle) => new Window._(this, handle));
 
   Window get window => new Window._(this, get('window_handle'));
 
@@ -175,8 +194,10 @@ class WebDriver extends SearchContext {
    * the corresponding DOM element. Likewise, any DOM Elements in the script
    * result will be converted to WebElements.
    */
-  dynamic executeAsync(String script, List args) =>
-      post('execute_async', {'script': script, 'args': args});
+  dynamic executeAsync(String script, List args) => post('execute_async', {
+      'script': script,
+      'args': args
+  });
 
   /**
    * Inject a snippet of JavaScript into the page for execution in the context
@@ -192,36 +213,44 @@ class WebDriver extends SearchContext {
    * the corresponding DOM element. Likewise, any DOM Elements in the script
    * result will be converted to WebElements.
    */
-  dynamic execute(String script, List args) =>
-      post('execute', {'script': script, 'args': args});
+  dynamic execute(String script, List args) => post('execute', {
+      'script': script,
+      'args': args
+  });
 
-  List<int> captureScreenshot() => new UnmodifiableListView(
-      CryptoUtils.base64StringToBytes(captureScreenshotAsBase64()));
+  List<int> captureScreenshot() => new UnmodifiableListView(BASE64.decode(captureScreenshotAsBase64()));
 
   String captureScreenshotAsBase64() => get('screenshot');
 
-  _reviver(dynamic key, dynamic value) {
-    if (value is Map && value.containsKey('ELEMENT')) {
+  dynamic _reviver(dynamic key, dynamic value) {
+    if (value is Map &&
+        value.containsKey('ELEMENT'))
+    {
       return new WebElement._(this, value['ELEMENT']);
     }
+
     return value;
   }
 
   @override
-  _post(String command, [params]) => post(command, params);
+  dynamic _post(String command, [params]) => post(command, params);
 
-  post(String command, [params]) {
-    var startTime = new DateTime.now();
-    var response;
-    var exception;
+  dynamic post(final String command, [final Map<String, dynamic> params]) {
+    final DateTime startTime = new DateTime.now();
+    dynamic response;
+    dynamic exception;
+
     try {
-      var path = _processCommand(command);
-      var request = _client.postUrl(new Uri.http(uri.authority, path));
+      final String path = _processCommand(command);
+      final HttpClientRequestSync request = _client.postUrl(new Uri.http(uri.authority, path));
+
       if (params != null) {
         request.headers.contentType = _CONTENT_TYPE_JSON;
         request.write(JSON.encode(params));
       }
+
       response = _processResponse(request.close());
+
       return response;
     } catch (e) {
       exception = e;
@@ -235,26 +264,33 @@ class WebDriver extends SearchContext {
           endTime: new DateTime.now(),
           result: response != null ? JSON.encode(response) : null,
           exception: exception != null ? exception.toString() : null,
-          stackTrace: new Trace.current(1)));
+          stackTrace: new Trace.current(1)
+      ));
     }
   }
 
-  get(String command) {
-    var startTime = new DateTime.now();
-    var response;
-    var exception;
+  dynamic get(final String command) {
+    final DateTime startTime = new DateTime.now();
+    dynamic response;
+    dynamic exception;
+
     try {
-      var path = _processCommand(command);
-      var request = _client.getUrl(new Uri.http(uri.authority, path));
+      final String path = _processCommand(command);
+      final HttpClientRequestSync request = _client.getUrl(new Uri.http(uri.authority, path));
+
       response = _processResponse(request.close());
+
       return response;
     } catch (e) {
       exception = e;
       rethrow;
     } finally {
-      if (command.contains('screenshot') && response != null) {
+      if (command.contains('screenshot') &&
+          response != null)
+      {
         response = 'screenshot';
       }
+
       _onCommand.add(new CommandEvent(
           method: 'GET',
           endpoint: command,
@@ -262,18 +298,22 @@ class WebDriver extends SearchContext {
           endTime: new DateTime.now(),
           result: response != null ? JSON.encode(response) : null,
           exception: exception != null ? exception.toString() : null,
-          stackTrace: new Trace.current(1)));
+          stackTrace: new Trace.current(1)
+      ));
     }
   }
 
-  delete(String command) {
-    var startTime = new DateTime.now();
-    var response;
-    var exception;
+  dynamic delete(String command) {
+    final DateTime startTime = new DateTime.now();
+    dynamic response;
+    dynamic exception;
+
     try {
-      var path = _processCommand(command);
-      var request = _client.deleteUrl(new Uri.http(uri.authority, path));
+      final String path = this._processCommand(command);
+      final HttpClientRequestSync request = WebDriver._client.deleteUrl(new Uri.http(uri.authority, path));
+
       response = _processResponse(request.close());
+
       return response;
     } catch (e) {
       exception = e;
@@ -290,28 +330,37 @@ class WebDriver extends SearchContext {
     }
   }
 
-  String _processCommand(String command) {
-    StringBuffer path = new StringBuffer(uri.path);
-    if (!command.isEmpty && !command.startsWith('/')) {
+  String _processCommand(final String command) {
+    final StringBuffer path = new StringBuffer(uri.path);
+
+    if (!command.isEmpty &&
+        !command.startsWith('/'))
+    {
       path.write('/');
     }
+
     path.write(command);
+
     return path.toString();
   }
 
-  _processResponse(HttpClientResponseSync resp) {
+  Map<String, dynamic> _processResponse(HttpClientResponseSync resp) {
+    // Is the response empty?
     if (resp.statusCode == HttpStatus.NO_CONTENT) {
       return null;
     }
-    var jsonBody = _parseBody(resp, _jsonDecoder);
+
+    final Map<String, dynamic> jsonBody = _parseBody(resp, _jsonDecoder);
 
     if (resp.statusCode != HttpStatus.OK ||
         jsonBody is! Map ||
-        jsonBody['status'] != 0) {
+        jsonBody['status'] != 0)
+    {
       throw new WebDriverException(
           httpStatusCode: resp.statusCode,
           httpReasonPhrase: resp.reasonPhrase,
-          jsonResp: jsonBody);
+          jsonResp: jsonBody
+      );
     }
 
     return jsonBody['value'];
@@ -321,21 +370,28 @@ class WebDriver extends SearchContext {
   String toString() => '{WebDriver $uri}';
 }
 
-final _NUL_REGEXP = new RegExp('\u{0}');
+/// Returns a [String] or JSON based on the HTTP header value in the response.
+dynamic _parseBody(HttpClientResponseSync resp, [final JsonCodec jsonDecoder = JSON]) {
+  String body; /// The request's response body.
 
-_parseBody(HttpClientResponseSync resp, [JsonCodec jsonDecoder = JSON]) {
+  // Is the content length empty?
   if (resp.contentLength == 0) {
     return null;
   }
+
+  // Is the response body empty?
   if (resp.body == null) {
     return null;
   }
-  String body = resp.body.replaceAll(_NUL_REGEXP, '').trim();
 
+  body = resp.body.replaceAll(_NUL_REGEXP, '').trim();
+
+  // Is the body empty after removing NULLs?
   if (body.isEmpty) {
     return null;
   }
 
+  // Check if this should be decoded as JSON.
   if (resp.headers.contentType.mimeType == _CONTENT_TYPE_JSON.mimeType) {
     return jsonDecoder.decode(body);
   }
